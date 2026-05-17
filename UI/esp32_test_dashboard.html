@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESP32 Power Monitor</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@300;400;500;600&display=swap');
+:root {
+  --bg:#070b11;--surface:#0f1621;--surface-2:#141d2a;--surface-3:#1b2638;--surface-4:#222f46;
+  --border:#243147;--text:#d8e2f3;--text-dim:#6d7a94;--text-mid:#9aa7c2;
+  --green:#32e0a1;--green-dim:rgba(50,224,161,.12);--green-glow:rgba(50,224,161,.25);
+  --amber:#ffbf47;--amber-dim:rgba(255,191,71,.12);
+  --red:#ff657f;--red-dim:rgba(255,101,127,.12);
+  --blue:#68a8ff;--blue-dim:rgba(104,168,255,.14);
+  --cyan:#27d2ff;--cyan-dim:rgba(39,210,255,.12);
+  --mono:'JetBrains Mono',monospace;--sans:'DM Sans',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scrollbar-width:thin;scrollbar-color:#1e2535 #080b10}
+body{font-family:var(--sans);background:radial-gradient(circle at top, rgba(104,168,255,.12), transparent 28%),var(--bg);color:var(--text);height:100vh;overflow:hidden;padding:1rem;line-height:1.5}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;
+  background-image:linear-gradient(rgba(77,159,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(77,159,255,.025) 1px,transparent 1px);
+  background-size:48px 48px;z-index:0}
+.page{position:relative;z-index:1;max-width:none;width:100%;height:calc(100vh - 88px);margin:0 auto;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));grid-template-rows:auto minmax(0,1fr) auto;gap:.8rem}
+
+header{max-width:none;margin:0 auto .85rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;position:relative;z-index:1}
+.brand{display:flex;align-items:center;gap:.75rem}
+.brand-icon{width:42px;height:42px;border-radius:12px;background:var(--blue-dim);border:1px solid rgba(104,168,255,.3);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 8px rgba(104,168,255,.05)}
+.brand-icon svg{width:18px;height:18px;fill:none;stroke:var(--blue);stroke-width:1.5}
+.brand-text{font-size:1.08rem;font-weight:600;letter-spacing:-.01em}
+.brand-text small{display:block;font-size:.72rem;font-weight:500;color:var(--text-dim);letter-spacing:.12em;text-transform:uppercase}
+.ws-pill{display:flex;align-items:center;gap:.5rem;font-family:var(--mono);font-size:.75rem;padding:.55rem 1rem;border-radius:999px;background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));border:1px solid var(--border)}
+.ws-dot{width:7px;height:7px;border-radius:50%;background:var(--text-dim);transition:background .3s,box-shadow .3s}
+.ws-dot.connected{background:var(--green);box-shadow:0 0 8px var(--green-glow)}
+.ws-dot.connecting{background:var(--amber);animation:blink 1s infinite}
+.ws-dot.error{background:var(--red)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+.connect-bar{display:grid;grid-template-columns:auto minmax(110px,140px) auto minmax(260px,1fr) auto minmax(240px,280px) auto auto auto;gap:.75rem;background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));border:1px solid var(--border);border-radius:18px;padding:1rem 1.25rem;align-items:center;box-shadow:0 20px 40px rgba(0,0,0,.16)}
+.connect-bar label{font-size:.8rem;color:var(--text-dim);white-space:nowrap;font-family:var(--mono)}
+.connect-bar input,.connect-bar select{width:100%;min-width:0;font-family:var(--mono);font-size:.92rem;padding:.8rem .95rem;background:#0b1119;border:1px solid var(--border);border-radius:12px;color:var(--text);outline:none;transition:border-color .2s, box-shadow .2s}
+.connect-bar input:focus,.connect-bar select:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(104,168,255,.08)}
+.btn-connect{padding:.8rem 1.3rem;background:linear-gradient(135deg, #5e9dff, #7bb6ff);border:none;border-radius:12px;color:#fff;font-size:.88rem;font-weight:600;cursor:pointer;font-family:var(--sans);transition:transform .15s, opacity .15s}
+.btn-connect:hover{opacity:.92;transform:translateY(-1px)}
+.btn-disconnect{padding:.8rem 1.1rem;background:transparent;border:1px solid var(--border);border-radius:12px;color:var(--text-mid);font-size:.85rem;cursor:pointer;display:none;font-family:var(--sans);transition:all .15s}
+.btn-disconnect:hover{border-color:var(--red);color:var(--red)}
+.btn-inject{padding:.8rem 1rem;background:var(--surface-3);border:1px solid var(--border);border-radius:12px;color:var(--text-mid);font-size:.8rem;cursor:pointer;font-family:var(--mono);transition:all .15s}
+.btn-inject:hover{border-color:var(--amber);color:var(--amber)}
+
+.desktop-summary{grid-column:1 / -1;grid-row:1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.8rem}
+.summary-card{background:linear-gradient(180deg, rgba(255,255,255,.022), rgba(255,255,255,.012));border:1px solid var(--border);border-radius:18px;padding:.85rem 1rem;min-height:102px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 18px 40px rgba(0,0,0,.12)}
+.summary-label{font-size:.68rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim)}
+.summary-value{font-family:var(--mono);font-size:1.78rem;font-weight:600;line-height:1;color:var(--text)}
+.summary-value.ok{color:var(--green)} .summary-value.warn{color:var(--amber)} .summary-value.error{color:var(--red)}
+.summary-foot{display:flex;justify-content:space-between;gap:1rem;font-family:var(--mono);font-size:.74rem;color:var(--text-mid)}
+
+.row-ac{grid-column:1 / span 8;grid-row:2;display:grid;grid-template-columns:1fr 1fr;gap:.8rem;min-height:0}
+.row-bottom{grid-column:1 / span 7;grid-row:3;display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:auto;gap:.8rem;align-items:stretch}
+.log-card{grid-column:8 / -1;grid-row:3;min-height:0;display:flex;flex-direction:column;max-height:250px}
+
+.card{background:linear-gradient(180deg, rgba(255,255,255,.024), rgba(255,255,255,.014));border:1px solid var(--border);border-radius:20px;padding:.9rem;transition:border-color .4s, box-shadow .3s;box-shadow:0 18px 50px rgba(0,0,0,.14);min-height:0;overflow:hidden}
+.card.ok{border-color:rgba(0,229,160,.22)}
+.card.warn{border-color:rgba(255,184,48,.22)}
+.card.error{border-color:rgba(255,77,106,.22)}
+.card-label{font-size:.68rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);margin-bottom:.85rem;display:flex;justify-content:space-between;align-items:center}
+
+.badge{font-size:.65rem;padding:.2em .55em;border-radius:5px;font-weight:600;letter-spacing:.06em;background:var(--surface-3);color:var(--text-dim);transition:all .3s}
+.badge.ok{background:var(--green-dim);color:var(--green)}
+.badge.warn{background:var(--amber-dim);color:var(--amber)}
+.badge.error{background:var(--red-dim);color:var(--red)}
+
+/* ── AC Ring card ── */
+.ac-body{display:flex;gap:.9rem;align-items:flex-start;height:calc(100% - 2rem)}
+.ac-left{display:flex;flex-direction:column;align-items:center;gap:.5rem;flex-shrink:0}
+.ac-ring-wrap{position:relative;width:102px;height:102px}
+.ac-ring-svg{width:102px;height:102px;transform:rotate(-90deg);overflow:visible}
+.ring-track{fill:none;stroke:var(--surface-3)}
+/* 3 rings: outer r=56 circ≈352, mid r=46 circ≈289, inner r=36 circ≈226 */
+.ring-ath{fill:none;stroke-linecap:round;stroke-dasharray:352;stroke-dashoffset:352;transition:stroke-dashoffset .8s cubic-bezier(.4,0,.2,1)}
+.ring-cur{fill:none;stroke-linecap:round;stroke-dasharray:289;stroke-dashoffset:289;transition:stroke-dashoffset .8s cubic-bezier(.4,0,.2,1)}
+.ring-atl{fill:none;stroke-linecap:round;stroke-dasharray:226;stroke-dashoffset:226;transition:stroke-dashoffset .8s cubic-bezier(.4,0,.2,1)}
+.ac-ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.ac-volt{font-family:var(--mono);font-size:1.16rem;font-weight:600;line-height:1;transition:color .3s;color:var(--text-mid)}
+.ac-volt.ok{color:var(--green)}.ac-volt.warn{color:var(--amber)}.ac-volt.error{color:var(--red)}
+.ac-volt-u{font-family:var(--mono);font-size:.68rem;color:var(--text-dim)}
+
+.ring-legend{display:flex;flex-direction:column;gap:.28rem}
+.leg-row{display:flex;align-items:center;gap:.4rem;font-family:var(--mono);font-size:.7rem}
+.leg-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.leg-lbl{color:var(--text-dim);width:2.4rem}
+.leg-val{color:var(--text);font-weight:500}
+
+.ac-right{flex:1;display:flex;flex-direction:column;gap:.45rem;min-width:0;min-height:0;height:100%}
+.stats-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.4rem}
+.stat-box{background:var(--surface-2);border-radius:8px;padding:.4rem .55rem}
+.stat-lbl{font-size:.6rem;letter-spacing:.07em;text-transform:uppercase;color:var(--text-dim);margin-bottom:.18rem}
+.stat-val{font-family:var(--mono);font-size:.85rem;font-weight:500}
+.stat-val.cur{color:var(--text)}.stat-val.ath{color:var(--red)}.stat-val.atl{color:var(--cyan)}
+.chart-wrap{position:relative;height:92px;margin-top:.2rem;flex:1;min-height:92px}
+
+/* ── Battery ring card ── */
+.batt-body{display:grid;grid-template-columns:minmax(250px,295px) minmax(0,1fr);gap:.85rem;align-items:stretch;height:100%;min-height:0}
+.batt-left{display:flex;flex-direction:column;gap:.8rem;flex-shrink:0}
+.battery-shell{background:linear-gradient(180deg, rgba(104,168,255,.08), rgba(104,168,255,.02));border:1px solid rgba(104,168,255,.18);border-radius:18px;padding:.85rem;display:flex;flex-direction:column;gap:.85rem;height:100%;min-height:0;overflow:hidden}
+.battery-caption{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem}
+.battery-caption h3{font-size:1rem;font-weight:600;letter-spacing:-.02em}
+.battery-caption p{font-family:var(--mono);font-size:.72rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.12em}
+.battery-visual{position:relative;height:116px;display:flex;align-items:center}
+.battery-frame{position:relative;width:100%;height:102px;border-radius:22px;border:2px solid #41516f;background:linear-gradient(180deg, #121a28, #0d131d);padding:10px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.03)}
+.battery-frame::after{content:'';position:absolute;right:-14px;top:31px;width:10px;height:36px;border-radius:0 12px 12px 0;background:#3a4762;border:2px solid #41516f;border-left:none}
+.battery-fill{position:absolute;left:12px;top:12px;bottom:12px;width:0;border-radius:18px;background:linear-gradient(90deg, rgba(255,101,127,.92), rgba(255,191,71,.92) 45%, rgba(50,224,161,.95));box-shadow:0 0 28px rgba(50,224,161,.12);transition:width .5s ease, filter .3s ease}
+.battery-frame.warn .battery-fill{filter:saturate(.9)}
+.battery-frame.error .battery-fill{filter:saturate(.75)}
+.battery-bars{position:absolute;inset:10px;display:grid;grid-template-columns:repeat(10,1fr);gap:5px;pointer-events:none}
+.battery-bars span{background:rgba(5,10,16,.28);border-radius:10px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.03)}
+.battery-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+.battery-big{font-family:var(--mono);font-size:1.72rem;font-weight:700;line-height:1}
+.battery-small{font-size:.66rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.14em;margin-top:.28rem}
+.battery-meter-row{display:grid;grid-template-columns:1fr 1fr;gap:.65rem}
+.meter-chip{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.05);border-radius:14px;padding:.65rem .75rem}
+.meter-chip .chip-label{font-family:var(--mono);font-size:.67rem;color:var(--text-dim);letter-spacing:.1em;text-transform:uppercase;margin-bottom:.3rem}
+.meter-chip .chip-value{font-family:var(--mono);font-size:1rem;font-weight:600}
+.batt-ring-wrap{position:relative;width:150px;height:150px}
+.batt-ring-svg{width:150px;height:150px;transform:rotate(-90deg);overflow:visible}
+/* battery rings: r=62 circ≈390, r=50 circ≈314, r=38 circ≈239 */
+.br-track{fill:none;stroke:var(--surface-3)}
+.br-ath{fill:none;stroke-linecap:round;stroke-dasharray:390;stroke-dashoffset:390;transition:stroke-dashoffset .8s cubic-bezier(.4,0,.2,1)}
+.br-cur{fill:none;stroke-linecap:round;stroke-dasharray:314;stroke-dashoffset:314;transition:stroke-dashoffset .8s cubic-bezier(.4,0,.2,1)}
+.br-atl{fill:none;stroke-linecap:round;stroke-dasharray:239;stroke-dashoffset:239;transition:stroke-dashoffset .8s cubic-bezier(.4,0,.2,1)}
+.batt-ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.batt-pct{font-family:var(--mono);font-size:1.5rem;font-weight:600;line-height:1;transition:color .3s;color:var(--text-mid)}
+.batt-pct.ok{color:var(--green)}.batt-pct.warn{color:var(--amber)}.batt-pct.error{color:var(--red)}
+.batt-pct-lbl{font-size:.58rem;color:var(--text-dim);letter-spacing:.07em;margin-top:.1rem}
+.batt-v-center{font-family:var(--mono);font-size:.78rem;color:var(--text-mid);margin-top:.15rem}
+
+.batt-right{display:flex;flex-direction:column;gap:.6rem;min-width:0;min-height:0}
+.batt-volt-big{font-family:var(--mono);font-size:1.95rem;font-weight:600;letter-spacing:-.03em;line-height:1;transition:color .3s;color:var(--text-mid)}
+.batt-volt-big.ok{color:var(--green)}.batt-volt-big.warn{color:var(--amber)}.batt-volt-big.error{color:var(--red)}
+.batt-volt-sub{font-size:.75rem;color:var(--text-dim);margin-top:.15rem;font-family:var(--mono)}
+
+.battery-insight{display:grid;grid-template-columns:repeat(3,1fr);gap:.45rem}
+.insight-box{background:var(--surface-2);border-radius:12px;padding:.65rem .75rem}
+.insight-box strong{display:block;font-size:.67rem;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:.3rem;font-family:var(--mono)}
+.insight-box span{font-family:var(--mono);font-size:1rem}
+
+/* ── Controls ── */
+.ctrl-row{display:flex;gap:.65rem;margin-top:.55rem}
+.btn-action{flex:1;padding:.6rem 0;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);color:var(--text-mid);font-size:.82rem;font-weight:500;cursor:pointer;font-family:var(--sans);transition:all .15s;position:relative;overflow:hidden}
+.btn-action:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-dim)}
+.btn-action.on{border-color:rgba(0,229,160,.4);color:var(--green);background:var(--green-dim)}
+.btn-action.off{border-color:rgba(255,77,106,.4);color:var(--red);background:var(--red-dim)}
+.btn-action:disabled{opacity:.3;cursor:not-allowed}
+.btn-action.loading::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.04),transparent);animation:shimmer 1s infinite}
+@keyframes shimmer{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.btn-hint{margin-top:.5rem;font-size:.72rem;color:var(--text-dim);font-family:var(--mono)}
+.popup-backdrop{position:fixed;inset:0;background:rgba(4,7,12,.72);backdrop-filter:blur(10px);display:none;align-items:center;justify-content:center;padding:1rem;z-index:20}
+.popup-backdrop.open{display:flex}
+.popup-card{width:min(460px,100%);background:
+  radial-gradient(circle at top right, rgba(77,159,255,.18), transparent 32%),
+  linear-gradient(180deg, rgba(20,28,42,.98), rgba(11,15,22,.98));
+  border:1px solid rgba(77,159,255,.22);border-radius:22px;padding:1.15rem;box-shadow:0 28px 90px rgba(0,0,0,.45)}
+.popup-top{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;margin-bottom:1rem}
+.popup-kicker{font-family:var(--mono);font-size:.7rem;color:var(--blue);letter-spacing:.12em;text-transform:uppercase}
+.popup-title{font-size:1.15rem;font-weight:600;letter-spacing:-.02em;margin-top:.2rem}
+.popup-copy{font-size:.82rem;color:var(--text-dim);margin-top:.25rem;max-width:34ch}
+.popup-close{width:36px;height:36px;border-radius:11px;border:1px solid var(--border);background:rgba(255,255,255,.02);color:var(--text-mid);cursor:pointer;font-size:1.1rem}
+.popup-close:hover{border-color:rgba(77,159,255,.35);color:var(--text)}
+.popup-slider-shell{margin-top:.65rem;padding:.85rem;border-radius:18px;border:1px solid rgba(255,255,255,.05);background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01))}
+.popup-slider-head{display:flex;justify-content:space-between;align-items:center;gap:.75rem;margin-bottom:.75rem}
+.popup-slider-lbl{font-family:var(--mono);font-size:.72rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.08em}
+.popup-slider-value{font-family:var(--mono);font-size:.78rem;color:var(--text)}
+.swipe-slider{position:relative;height:72px;border-radius:999px;padding:8px;background:
+  linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.015));
+  border:1px solid rgba(255,255,255,.05);overflow:hidden;user-select:none;touch-action:none}
+.swipe-slider-fill{position:absolute;left:8px;top:8px;bottom:8px;width:56px;border-radius:999px;
+  background:linear-gradient(90deg, rgba(77,159,255,.30), rgba(0,229,160,.30));
+  box-shadow:0 0 24px rgba(77,159,255,.18);transition:width .22s ease}
+.swipe-slider-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:.82rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text-mid);pointer-events:none}
+.swipe-slider-text strong{color:var(--text);font-weight:600}
+.swipe-slider-thumb{position:absolute;left:8px;top:8px;width:56px;height:56px;border-radius:50%;
+  background:radial-gradient(circle at 30% 30%, #ffffff, #d8e8ff 38%, #6faeff 70%, #2f6fb9 100%);
+  box-shadow:0 10px 26px rgba(0,0,0,.28), 0 0 0 1px rgba(255,255,255,.18) inset;
+  display:flex;align-items:center;justify-content:center;cursor:grab;transition:left .22s ease, transform .22s ease}
+.swipe-slider-thumb:active{cursor:grabbing}
+.swipe-slider-thumb::before{content:'››';font-size:1.05rem;letter-spacing:-.1em;color:#12365d;font-weight:700}
+.swipe-slider.dragging .swipe-slider-thumb,
+.swipe-slider.dragging .swipe-slider-fill{transition:none}
+.popup-slider-note{margin-top:.65rem;font-family:var(--mono);font-size:.7rem;color:var(--text-dim)}
+.popup-actions{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-top:.95rem}
+.popup-tip{font-family:var(--mono);font-size:.72rem;color:var(--text-dim)}
+.popup-cancel{padding:.55rem 1rem;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text-mid);cursor:pointer;font-family:var(--mono);font-size:.76rem}
+.popup-cancel:hover{border-color:rgba(77,159,255,.35);color:var(--text)}
+.settings-backdrop{position:fixed;inset:0;background:rgba(5,9,14,.64);backdrop-filter:blur(10px);display:none;align-items:flex-start;justify-content:flex-end;padding:1rem;z-index:35}
+.settings-backdrop.open{display:flex}
+.settings-panel{width:min(520px,100%);background:linear-gradient(180deg, rgba(18,26,39,.98), rgba(11,16,24,.98));border:1px solid var(--border);border-radius:20px;padding:1.15rem;box-shadow:0 30px 90px rgba(0,0,0,.45)}
+.settings-head{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:1rem}
+.settings-title{font-size:1.05rem;font-weight:600;letter-spacing:-.02em}
+.settings-copy{font-size:.78rem;color:var(--text-dim);margin-top:.2rem}
+.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:.8rem 1rem}
+.settings-grid .full{grid-column:1 / -1}
+.settings-grid label{font-family:var(--mono);font-size:.72rem;color:var(--text-dim);letter-spacing:.08em;text-transform:uppercase;display:block;margin-bottom:.35rem}
+.settings-grid input,.settings-grid select{width:100%;font-family:var(--mono);font-size:.9rem;padding:.8rem .95rem;background:#0b1119;border:1px solid var(--border);border-radius:12px;color:var(--text);outline:none}
+.settings-grid input:focus,.settings-grid select:focus{border-color:var(--blue)}
+.settings-actions{display:flex;justify-content:flex-end;gap:.75rem;margin-top:1rem}
+.btn-secondary{padding:.8rem 1rem;background:transparent;border:1px solid var(--border);border-radius:12px;color:var(--text-mid);font-size:.82rem;cursor:pointer;font-family:var(--sans)}
+.btn-secondary:hover{border-color:var(--blue);color:var(--text)}
+.settings-toggle{padding:.65rem 1rem;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-family:var(--mono);font-size:.8rem;cursor:pointer;transition:all .15s}
+.settings-toggle:hover{border-color:var(--blue);color:var(--blue)}
+.desktop-hidden{display:none !important}
+
+.status-strip{grid-column:1 / -1;display:flex;gap:.55rem;flex-wrap:wrap;align-items:center;background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));border:1px solid var(--border);border-radius:16px;padding:.6rem .8rem;font-family:var(--mono);font-size:.7rem;color:var(--text-dim)}
+.info-chip{background:var(--surface-2);padding:.15em .55em;border-radius:5px;color:var(--text)}
+
+.log-out{font-family:var(--mono);font-size:.7rem;line-height:1.45;color:var(--text-dim);flex:1;min-height:0;overflow-y:auto;background:var(--bg);border-radius:8px;padding:.7rem;scrollbar-width:thin}
+.log-out .entry{margin-bottom:.1rem}
+.log-out .ts{color:#2a3248;margin-right:.45rem}
+.log-out .recv{color:#3a8a5a}.log-out .send{color:#3a5a8a}.log-out .info{color:#7a6a3a}.log-out .err{color:var(--red)}
+.log-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem}
+.log-title{font-size:.68rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim)}
+.btn-clear{font-size:.72rem;background:none;border:none;color:var(--text-dim);cursor:pointer;font-family:var(--mono)}
+.btn-clear:hover{color:var(--text)}
+
+@media(min-width:1181px){
+  #card-batt{grid-column:9 / -1;grid-row:2}
+}
+@media(max-width:1180px){
+  body{height:auto;overflow:auto}
+  .page{height:auto;display:flex;flex-direction:column;gap:1rem}
+  .desktop-summary{grid-template-columns:1fr 1fr}
+  .row-ac,.row-bottom{grid-template-columns:1fr}
+  .log-card{grid-column:auto;grid-row:auto;max-height:none}
+  .status-strip{grid-column:auto}
+}
+@media(max-width:700px){
+  .desktop-summary,.row-ac,.row-bottom,.battery-insight,.battery-meter-row{grid-template-columns:1fr}
+  .ac-body,.batt-body{display:flex;flex-direction:column;align-items:stretch}
+  .ac-right,.batt-right{width:100%}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="brand-icon">
+      <svg viewBox="0 0 18 18"><polyline points="1 11 4 7 7 10 10 5 13 9 16 4"/><line x1="1" y1="15" x2="17" y2="15"/></svg>
+    </div>
+    <div class="brand-text">Power Monitor <small>ESP32 · Live telemetry</small></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:.75rem">
+    <button class="settings-toggle" type="button" onclick="openSettings()">Settings</button>
+    <div class="ws-pill">
+      <div class="ws-dot" id="ws-dot"></div>
+      <span id="ws-label">disconnected</span>
+    </div>
+  </div>
+</header>
+
+<div class="page">
+
+  <div class="connect-bar desktop-hidden" aria-hidden="true">
+    <span style="font-family:var(--mono);font-size:.78rem;color:var(--text-dim)">Settings moved to the top-right menu so the full dashboard stays visible without scrolling.</span>
+  </div>
+
+  <div class="desktop-summary">
+    <div class="summary-card">
+      <div class="summary-label">Grid Feed</div>
+      <div class="summary-value" id="summary-grid-val">—</div>
+      <div class="summary-foot"><span id="summary-grid-state">Waiting</span><span id="summary-grid-ath">ATH —</span></div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">Backup Output</div>
+      <div class="summary-value" id="summary-backup-val">—</div>
+      <div class="summary-foot"><span id="summary-backup-state">Waiting</span><span id="summary-backup-ath">ATH —</span></div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">Battery Capacity</div>
+      <div class="summary-value" id="summary-batt-val">—</div>
+      <div class="summary-foot"><span id="summary-batt-state">No estimate</span><span id="summary-batt-volts">—</span></div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">Connection</div>
+      <div class="summary-value" id="summary-link-val">Idle</div>
+      <div class="summary-foot"><span id="summary-link-mode">Cloud</span><span id="summary-link-endpoint">not connected</span></div>
+    </div>
+  </div>
+
+  <!-- AC row: Grid + Backup each with 3-ring + history chart -->
+  <div class="row-ac">
+
+    <!-- GRID -->
+    <div class="card" id="card-grid">
+      <div class="card-label">Grid voltage <span class="badge" id="badge-grid">—</span></div>
+      <div class="ac-body">
+        <div class="ac-left">
+          <div class="ac-ring-wrap">
+            <svg class="ac-ring-svg" viewBox="0 0 130 130">
+              <circle class="ring-track" cx="65" cy="65" r="56" stroke-width="8"/>
+              <circle class="ring-track" cx="65" cy="65" r="46" stroke-width="8"/>
+              <circle class="ring-track" cx="65" cy="65" r="36" stroke-width="8"/>
+              <circle class="ring-ath" id="g-arc-ath" cx="65" cy="65" r="56" stroke-width="8" stroke="#ff4d6a"/>
+              <circle class="ring-cur" id="g-arc-cur" cx="65" cy="65" r="46" stroke-width="8" stroke="#00e5a0"/>
+              <circle class="ring-atl" id="g-arc-atl" cx="65" cy="65" r="36" stroke-width="8" stroke="#00cfff"/>
+            </svg>
+            <div class="ac-ring-center">
+              <span class="ac-volt" id="val-grid">—</span>
+              <span class="ac-volt-u">V AC</span>
+            </div>
+          </div>
+          <div class="ring-legend">
+            <div class="leg-row"><span class="leg-dot" style="background:#ff4d6a"></span><span class="leg-lbl">ATH</span><span class="leg-val" id="gleg-ath">—</span></div>
+            <div class="leg-row"><span class="leg-dot" style="background:#00e5a0"></span><span class="leg-lbl">NOW</span><span class="leg-val" id="gleg-cur">—</span></div>
+            <div class="leg-row"><span class="leg-dot" style="background:#00cfff"></span><span class="leg-lbl">ATL</span><span class="leg-val" id="gleg-atl">—</span></div>
+          </div>
+        </div>
+        <div class="ac-right">
+          <div class="stats-3">
+            <div class="stat-box"><div class="stat-lbl">Current</div><div class="stat-val cur" id="cur-grid">—</div></div>
+            <div class="stat-box"><div class="stat-lbl">ATH ↑</div><div class="stat-val ath" id="ath-grid">—</div></div>
+            <div class="stat-box"><div class="stat-lbl">ATL ↓</div><div class="stat-val atl" id="atl-grid">—</div></div>
+          </div>
+          <div class="chart-wrap"><canvas id="chart-grid" role="img" aria-label="Grid voltage live history">Grid voltage history</canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BACKUP -->
+    <div class="card" id="card-backup">
+      <div class="card-label">Backup (UPS out) <span class="badge" id="badge-backup">—</span></div>
+      <div class="ac-body">
+        <div class="ac-left">
+          <div class="ac-ring-wrap">
+            <svg class="ac-ring-svg" viewBox="0 0 130 130">
+              <circle class="ring-track" cx="65" cy="65" r="56" stroke-width="8"/>
+              <circle class="ring-track" cx="65" cy="65" r="46" stroke-width="8"/>
+              <circle class="ring-track" cx="65" cy="65" r="36" stroke-width="8"/>
+              <circle class="ring-ath" id="b-arc-ath" cx="65" cy="65" r="56" stroke-width="8" stroke="#ff4d6a"/>
+              <circle class="ring-cur" id="b-arc-cur" cx="65" cy="65" r="46" stroke-width="8" stroke="#4d9fff"/>
+              <circle class="ring-atl" id="b-arc-atl" cx="65" cy="65" r="36" stroke-width="8" stroke="#00cfff"/>
+            </svg>
+            <div class="ac-ring-center">
+              <span class="ac-volt" id="val-backup">—</span>
+              <span class="ac-volt-u">V AC</span>
+            </div>
+          </div>
+          <div class="ring-legend">
+            <div class="leg-row"><span class="leg-dot" style="background:#ff4d6a"></span><span class="leg-lbl">ATH</span><span class="leg-val" id="bleg-ath">—</span></div>
+            <div class="leg-row"><span class="leg-dot" style="background:#4d9fff"></span><span class="leg-lbl">NOW</span><span class="leg-val" id="bleg-cur">—</span></div>
+            <div class="leg-row"><span class="leg-dot" style="background:#00cfff"></span><span class="leg-lbl">ATL</span><span class="leg-val" id="bleg-atl">—</span></div>
+          </div>
+        </div>
+        <div class="ac-right">
+          <div class="stats-3">
+            <div class="stat-box"><div class="stat-lbl">Current</div><div class="stat-val cur" id="cur-backup">—</div></div>
+            <div class="stat-box"><div class="stat-lbl">ATH ↑</div><div class="stat-val ath" id="ath-backup">—</div></div>
+            <div class="stat-box"><div class="stat-lbl">ATL ↓</div><div class="stat-val atl" id="atl-backup">—</div></div>
+          </div>
+          <div class="chart-wrap"><canvas id="chart-backup" role="img" aria-label="Backup voltage live history">Backup voltage history</canvas></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Battery: 3-ring + details + history -->
+  <div class="card" id="card-batt">
+    <div class="card-label">Battery <span class="badge" id="badge-batt">—</span></div>
+    <div class="batt-body">
+      <div class="batt-left">
+        <div class="battery-shell">
+          <div class="battery-caption">
+            <div>
+              <p>Actual Battery Visualization</p>
+              <h3>Charge Reservoir</h3>
+            </div>
+            <div class="batt-v-center" id="batt-v-center">—</div>
+          </div>
+          <div class="battery-visual">
+            <div class="battery-frame" id="battery-frame">
+              <div class="battery-fill" id="battery-fill"></div>
+              <div class="battery-bars" id="battery-bars">
+                <span></span><span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span><span></span>
+              </div>
+              <div class="battery-overlay">
+                <div class="battery-big" id="battery-pct-hero">—</div>
+                <div class="battery-small" id="battery-state-hero">usable charge</div>
+              </div>
+            </div>
+          </div>
+          <div class="battery-meter-row">
+            <div class="meter-chip">
+              <div class="chip-label">Terminal Voltage</div>
+              <div class="chip-value" id="battery-terminal-chip">—</div>
+            </div>
+            <div class="meter-chip">
+              <div class="chip-label">Estimated Capacity</div>
+              <div class="chip-value" id="battery-capacity-chip">—</div>
+            </div>
+          </div>
+          <div class="ring-legend">
+            <div class="leg-row"><span class="leg-dot" style="background:#ff4d6a"></span><span class="leg-lbl">ATH</span><span class="leg-val" id="battleg-ath">—</span></div>
+            <div class="leg-row"><span class="leg-dot" style="background:#00e5a0"></span><span class="leg-lbl">NOW</span><span class="leg-val" id="battleg-cur">—</span></div>
+            <div class="leg-row"><span class="leg-dot" style="background:#00cfff"></span><span class="leg-lbl">ATL</span><span class="leg-val" id="battleg-atl">—</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="batt-right">
+        <div>
+          <span class="batt-volt-big" id="val-batt">—</span>
+          <span style="font-family:var(--mono);font-size:.95rem;color:var(--text-dim);margin-left:.2rem">V DC</span>
+          <div class="batt-volt-sub" id="sub-batt">waiting for data</div>
+        </div>
+        <div class="battery-insight">
+          <div class="insight-box">
+            <strong>Charge Window</strong>
+            <span id="battery-window">—</span>
+          </div>
+          <div class="insight-box">
+            <strong>Battery State</strong>
+            <span id="battery-health-text">—</span>
+          </div>
+          <div class="insight-box">
+            <strong>Live Percent</strong>
+            <span id="batt-pct">—</span>
+          </div>
+        </div>
+        <div class="stats-3">
+          <div class="stat-box"><div class="stat-lbl">Current</div><div class="stat-val cur" id="cur-batt">—</div></div>
+          <div class="stat-box"><div class="stat-lbl">ATH ↑</div><div class="stat-val ath" id="ath-batt">—</div></div>
+          <div class="stat-box"><div class="stat-lbl">ATL ↓</div><div class="stat-val atl" id="atl-batt">—</div></div>
+        </div>
+        <div class="chart-wrap" style="height:88px"><canvas id="chart-batt" role="img" aria-label="Battery voltage live history">Battery voltage history</canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="row-bottom">
+    <div class="card">
+      <div class="card-label">UPS power button</div>
+      <div class="ctrl-row">
+        <button class="btn-action on" id="btn-ups-on" onclick="openActionPopup('ups','on')" disabled>⏻ Hold Button</button>
+      </div>
+      <div class="btn-hint">Slide confirmation protects hold and release.</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Server power button</div>
+      <div class="ctrl-row">
+        <button class="btn-action on" id="btn-server-on" onclick="openActionPopup('server','on')" disabled>▶ Power</button>
+        <button class="btn-action off" id="btn-server-off" onclick="openActionPopup('server','off')" disabled>■ Force Off</button>
+      </div>
+      <div class="btn-hint">All server actions use slide-to-confirm.</div>
+    </div>
+    <div class="status-strip">
+      <span>Uptime <span class="info-chip" id="uptime-val">—</span></span>
+      <span>Last update <span class="info-chip" id="last-update">—</span></span>
+      <span>Samples <span class="info-chip" id="sample-count">0</span></span>
+      <span>Endpoint <span class="info-chip" id="endpoint-label">not connected</span></span>
+    </div>
+  </div>
+
+  <div class="card log-card">
+    <div class="log-head">
+      <div class="log-title">Event log</div>
+      <button class="btn-clear" onclick="clearLog()">clear</button>
+    </div>
+    <div class="log-out" id="log"></div>
+  </div>
+
+</div>
+
+<div class="settings-backdrop" id="settings-backdrop" onclick="closeSettings(event)">
+  <div class="settings-panel" onclick="event.stopPropagation()">
+    <div class="settings-head">
+      <div>
+        <div class="settings-title">Connection Settings</div>
+        <div class="settings-copy">Move network and device controls out of the main workspace so all telemetry stays visible.</div>
+      </div>
+      <button class="popup-close" type="button" onclick="closeSettings()">×</button>
+    </div>
+    <div class="settings-grid">
+      <div>
+        <label for="mode-input">Mode</label>
+        <select id="mode-input" onchange="syncSettingsSummary()">
+          <option value="lan">LAN</option>
+          <option value="cloud" selected>Cloud</option>
+        </select>
+      </div>
+      <div>
+        <label for="device-id-input">Device ID</label>
+        <input type="text" id="device-id-input" value="esp32-power-monitor-1" spellcheck="false"/>
+      </div>
+      <div class="full">
+        <label id="endpoint-input-label" for="ip-input">Backend URL</label>
+        <input type="text" id="ip-input" value="https://monitor.codebaselabs.online" spellcheck="false"/>
+      </div>
+    </div>
+    <div class="settings-actions">
+      <button class="btn-secondary btn-inject" type="button" id="btn-demo" onclick="injectDemo()">Demo data</button>
+      <button class="btn-secondary" type="button" id="btn-disconnect" onclick="disconnect()">Disconnect</button>
+      <button class="btn-connect" type="button" id="btn-connect" onclick="connect()">Connect</button>
+    </div>
+  </div>
+</div>
+
+<div class="popup-backdrop" id="action-popup" onclick="closeActionPopup(event)">
+  <div class="popup-card" onclick="event.stopPropagation()">
+    <div class="popup-top">
+      <div>
+        <div class="popup-kicker" id="popup-kicker">Confirm Action</div>
+        <div class="popup-title" id="popup-title">Slide to continue</div>
+        <div class="popup-copy" id="popup-copy">Use the slider to confirm this power action.</div>
+      </div>
+      <button class="popup-close" type="button" onclick="closeActionPopup()">×</button>
+    </div>
+    <div class="popup-slider-shell">
+      <div class="popup-slider-head">
+        <span class="popup-slider-lbl" id="popup-slider-label">Confirmation</span>
+        <span class="popup-slider-value" id="popup-slider-value">0%</span>
+      </div>
+      <div class="swipe-slider" id="popup-swipe">
+        <div class="swipe-slider-fill" id="popup-swipe-fill"></div>
+        <div class="swipe-slider-text" id="popup-swipe-text">Swipe To <strong id="popup-swipe-verb">Confirm</strong></div>
+        <div class="swipe-slider-thumb" id="popup-swipe-thumb"></div>
+      </div>
+      <div class="popup-slider-note" id="popup-slider-note">Slide fully to the right to send the action.</div>
+    </div>
+    <div class="popup-actions">
+      <div class="popup-tip" id="popup-tip">Protected action</div>
+      <button class="popup-cancel" type="button" onclick="closeActionPopup()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+let ws=null, ip='', sampleCount=0;
+let connectionMode='lan';
+let deviceId='esp32-power-monitor-1';
+let cloudPollTimer=null;
+const HIST=60;
+const stats={grid:{ath:null,atl:null},backup:{ath:null,atl:null},batt:{ath:null,atl:null}};
+const hist={grid:[],backup:[],batt:[]};
+const controlState={upsHeld:false};
+let pendingAction=null;
+let swipeState={active:false,startX:0,startLeft:0,maxLeft:0,left:0};
+const NGROK_HEADERS={};
+const startupParams=new URLSearchParams(window.location.search);
+
+function resetTelemetry(){
+  sampleCount=0;
+  ['grid','backup','batt'].forEach(name=>{
+    stats[name].ath=null;
+    stats[name].atl=null;
+    hist[name]=[];
+  });
+}
+
+function applyStartupParams(){
+  const mode=startupParams.get('mode');
+  const backendUrl=startupParams.get('backendUrl');
+  const device=startupParams.get('deviceId');
+
+  if(mode==='lan' || mode==='cloud'){
+    document.getElementById('mode-input').value=mode;
+  }
+
+  if(backendUrl){
+    document.getElementById('ip-input').value=backendUrl;
+  }
+
+  if(device){
+    document.getElementById('device-id-input').value=device;
+  }
+
+  const isCloud=document.getElementById('mode-input').value==='cloud';
+  document.getElementById('endpoint-input-label').textContent=isCloud?'Backend URL':'ESP32 IP';
+  document.getElementById('summary-link-mode').textContent=isCloud?'Cloud':'LAN';
+}
+
+function syncSettingsSummary(){
+  const isCloud=document.getElementById('mode-input').value==='cloud';
+  document.getElementById('endpoint-input-label').textContent=isCloud?'Backend URL':'ESP32 IP';
+  document.getElementById('summary-link-mode').textContent=isCloud?'Cloud':'LAN';
+}
+
+function openSettings(){
+  document.getElementById('settings-backdrop').classList.add('open');
+}
+
+function closeSettings(event){
+  if(event && event.target!==event.currentTarget) return;
+  document.getElementById('settings-backdrop').classList.remove('open');
+}
+
+function backendBase(){
+  return ip.replace(/\/+$/,'');
+}
+
+function cloudStatusUrl(){
+  return `${backendBase()}/api/devices/${encodeURIComponent(deviceId)}/status`;
+}
+
+function cloudCommandName(device, action){
+  if(device==='ups' && action==='on') return 'ups_on_toggle';
+  if(device==='ups' && action==='off') return 'ups_off';
+  if(device==='server' && action==='on') return 'server_on';
+  return 'server_off';
+}
+
+async function fetchJson(url, options={}){
+  const headers={...(options.headers||{})};
+  if(connectionMode==='cloud'){
+    Object.assign(headers, NGROK_HEADERS);
+  }
+  const response=await fetch(url, {...options, headers});
+  const data=await response.json();
+  return {response, data};
+}
+
+// ── Auto-range Y: pads 20% around actual data spread, snaps to nice ticks ─
+function niceRange(arr) {
+  const valid = arr.filter(v=>v!=null);
+  if(!valid.length) return {min:0,max:10};
+  let mn=Math.min(...valid), mx=Math.max(...valid);
+  const span=mx-mn||2;
+  mn-=span*0.20; mx+=span*0.20;
+  const step = mx>50 ? 10 : mx>5 ? 0.5 : 0.1;
+  return { min: Math.floor(mn/step)*step, max: Math.ceil(mx/step)*step };
+}
+
+// ── Chart factory ──────────────────────────────────────────────────────────
+function makeChart(id, hexColor) {
+  const rgba = hexColor+'18';
+  return new Chart(document.getElementById(id), {
+    type:'line',
+    data:{
+      labels:Array(HIST).fill(''),
+      datasets:[{
+        data:Array(HIST).fill(null),
+        borderColor:hexColor, borderWidth:1.5,
+        backgroundColor:rgba, fill:true,
+        tension:0.38, pointRadius:0, pointHitRadius:10
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          callbacks:{label:c=>c.parsed.y!=null?c.parsed.y.toFixed(2)+' V':'—'},
+          backgroundColor:'#0d1117',borderColor:'#1e2535',borderWidth:1,
+          titleColor:'#5a6480',bodyColor:'#c9d1e0',
+          titleFont:{family:'JetBrains Mono',size:10},
+          bodyFont:{family:'JetBrains Mono',size:11}
+        }
+      },
+      scales:{
+        x:{display:false},
+        y:{
+          min:undefined, max:undefined,
+          grid:{color:'rgba(30,37,53,.85)',lineWidth:1},
+          border:{display:false},
+          ticks:{
+            color:'#5a6480',
+            font:{family:'JetBrains Mono',size:10},
+            maxTicksLimit:5,
+            callback:v=>{ const n=Number(v); return n>=50?n.toFixed(0)+'V':n.toFixed(1)+'V'; }
+          }
+        }
+      }
+    }
+  });
+}
+
+const charts={
+  grid:   makeChart('chart-grid',   '#00e5a0'),
+  backup: makeChart('chart-backup', '#4d9fff'),
+  batt:   makeChart('chart-batt',   '#ffb830')
+};
+
+function pushHist(name, val) {
+  hist[name].push(val);
+  if(hist[name].length>HIST) hist[name].shift();
+  const padded=Array(HIST).fill(null);
+  hist[name].forEach((v,i)=>{ padded[HIST-hist[name].length+i]=v; });
+  charts[name].data.datasets[0].data=padded;
+  // auto-range using ALL history including ATH/ATL in stats
+  const forRange=[...padded];
+  if(stats[name].ath!=null) forRange.push(stats[name].ath);
+  if(stats[name].atl!=null) forRange.push(stats[name].atl);
+  const {min,max}=niceRange(forRange);
+  charts[name].options.scales.y.min=min;
+  charts[name].options.scales.y.max=max;
+  charts[name].update('none');
+}
+
+// ── Ring arc setter (offset = circ*(1-frac)) ──────────────────────────────
+function setArc(id, circ, frac) {
+  const el=document.getElementById(id);
+  if(el) el.style.strokeDashoffset = circ*(1-Math.min(1,Math.max(0,frac)));
+}
+
+// AC rings: map voltage to fraction within [floor..ceil] span
+// floor/ceil computed from running ATH/ATL padded ±5%
+function updateAcRings(prefix, cur, ath, atl) {
+  // Use actual ATH/ATL to define the ring span for meaningful visual comparison
+  const lo = atl!=null ? atl*0.96 : 150;
+  const hi = ath!=null ? ath*1.04 : 280;
+  const span = hi-lo || 1;
+  const f = v => (v-lo)/span;
+
+  const p = prefix==='grid' ? 'g' : 'b';
+  setArc(`${p}-arc-ath`, 352, ath!=null ? f(ath) : 0);
+  setArc(`${p}-arc-cur`, 289, cur>0  ? f(cur)  : 0);
+  setArc(`${p}-arc-atl`, 226, atl!=null ? f(atl) : 0);
+}
+
+// Battery rings: 10–14.4V range
+function updateBattRings(curV, athV, atlV) {
+  const lo=10, hi=14.4, span=hi-lo;
+  const f=v=>v!=null?(v-lo)/span:0;
+  setArc('batt-arc-ath', 390, f(athV));
+  setArc('batt-arc-cur', 314, f(curV>0?curV:null));
+  setArc('batt-arc-atl', 239, f(atlV));
+}
+
+// ── ATH/ATL ───────────────────────────────────────────────────────────────
+function trackStat(name, val) {
+  if(val==null||val===0) return;
+  const s=stats[name];
+  if(s.ath===null||val>s.ath) s.ath=val;
+  if(s.atl===null||val<s.atl) s.atl=val;
+}
+
+// ── AC Card update ─────────────────────────────────────────────────────────
+function updateAcCard(name, voltage, ok) {
+  const v=voltage??0;
+  const state=v===0?'error':ok?'ok':'warn';
+  trackStat(name, v);
+  pushHist(name, v>0?v:null);
+  const s=stats[name];
+
+  updateAcRings(name, v, s.ath, s.atl);
+
+  document.getElementById(`card-${name}`).className=`card ${state}`;
+  document.getElementById(`badge-${name}`).className=`badge ${state}`;
+  document.getElementById(`badge-${name}`).textContent=v===0?'NO SIGNAL':ok?'OK':'LOW';
+
+  const el=document.getElementById(`val-${name}`);
+  el.className=`ac-volt ${state}`;
+  el.textContent=v>0?v.toFixed(1):'0';
+
+  document.getElementById(`cur-${name}`).textContent=v>0?v.toFixed(1)+' V':'—';
+  document.getElementById(`ath-${name}`).textContent=s.ath!=null?s.ath.toFixed(1)+' V':'—';
+  document.getElementById(`atl-${name}`).textContent=s.atl!=null?s.atl.toFixed(1)+' V':'—';
+
+  const pfx=name==='grid'?'g':'b';
+  document.getElementById(`${pfx}leg-ath`).textContent=s.ath!=null?s.ath.toFixed(1)+' V':'—';
+  document.getElementById(`${pfx}leg-cur`).textContent=v>0?v.toFixed(1)+' V':'—';
+  document.getElementById(`${pfx}leg-atl`).textContent=s.atl!=null?s.atl.toFixed(1)+' V':'—';
+
+  document.getElementById(`summary-${name}-val`).className=`summary-value ${state}`;
+  document.getElementById(`summary-${name}-val`).textContent=v>0?`${v.toFixed(1)}V`:'—';
+  document.getElementById(`summary-${name}-state`).textContent=v===0?'No signal':ok?'Stable feed':'Low line';
+  document.getElementById(`summary-${name}-ath`).textContent=s.ath!=null?`ATH ${s.ath.toFixed(1)}V`:'ATH —';
+}
+
+// ── Battery Card update ────────────────────────────────────────────────────
+function updateBattCard(voltage, percent) {
+  const v=voltage??0, pct=percent??0;
+  const state=v>=12.5?'ok':v>=12.0?'warn':'error';
+  trackStat('batt', v);
+  pushHist('batt', v>0?v:null);
+  const s=stats['batt'];
+
+  document.getElementById('card-batt').className=`card ${state}`;
+  document.getElementById('badge-batt').className=`badge ${state}`;
+  document.getElementById('badge-batt').textContent=v>0?Math.round(pct)+'%':'—';
+
+  const el=document.getElementById('val-batt');
+  el.className=`batt-volt-big ${state}`;
+  el.textContent=v>0?v.toFixed(2):'0.00';
+
+  const stateCopy=v===0?'No reading':pct>=75?'High reserve':pct>=40?'Mid reserve':'Low reserve';
+  document.getElementById('sub-batt').textContent=v>0?`${v.toFixed(2)} V · estimated ${Math.round(pct)}% reserve`:'no reading';
+  document.getElementById('batt-pct').textContent=v>0?Math.round(pct)+'%':'—';
+  document.getElementById('batt-v-center').textContent=v>0?`${v.toFixed(2)} V terminal`:'—';
+  document.getElementById('battery-pct-hero').textContent=v>0?`${Math.round(pct)}%`:'—';
+  document.getElementById('battery-state-hero').textContent=stateCopy;
+  document.getElementById('battery-terminal-chip').textContent=v>0?`${v.toFixed(2)} V`:'—';
+  document.getElementById('battery-capacity-chip').textContent=v>0?`${Math.round(pct)}%`:'—';
+  document.getElementById('battery-window').textContent=s.atl!=null&&s.ath!=null?`${s.atl.toFixed(2)}–${s.ath.toFixed(2)} V`:'—';
+  document.getElementById('battery-health-text').textContent=stateCopy;
+
+  document.getElementById('cur-batt').textContent=v>0?v.toFixed(2)+' V':'—';
+  document.getElementById('ath-batt').textContent=s.ath!=null?s.ath.toFixed(2)+' V':'—';
+  document.getElementById('atl-batt').textContent=s.atl!=null?s.atl.toFixed(2)+' V':'—';
+  document.getElementById('battleg-ath').textContent=s.ath!=null?s.ath.toFixed(2)+' V':'—';
+  document.getElementById('battleg-cur').textContent=v>0?v.toFixed(2)+' V':'—';
+  document.getElementById('battleg-atl').textContent=s.atl!=null?s.atl.toFixed(2)+' V':'—';
+
+  const fillPct=Math.max(0, Math.min(100, Math.round(pct)));
+  const frame=document.getElementById('battery-frame');
+  frame.className=`battery-frame ${state}`;
+  document.getElementById('battery-fill').style.width=v>0?`max(18px, calc(${fillPct}% - 12px))`:'0';
+  document.getElementById('summary-batt-val').className=`summary-value ${state}`;
+  document.getElementById('summary-batt-val').textContent=v>0?`${fillPct}%`:'—';
+  document.getElementById('summary-batt-state').textContent=stateCopy;
+  document.getElementById('summary-batt-volts').textContent=v>0?`${v.toFixed(2)}V`:'—';
+}
+
+function updateCards(d) {
+  updateAcCard('grid',   d.grid?.voltage,   d.grid?.ok);
+  updateAcCard('backup', d.backup?.voltage, d.backup?.ok);
+  updateBattCard(d.battery?.voltage, d.battery?.percent);
+  updateControlButtons(d.controls);
+  const up=d.uptime??0;
+  document.getElementById('uptime-val').textContent=
+    `${String(Math.floor(up/3600)).padStart(2,'0')}:${String(Math.floor((up%3600)/60)).padStart(2,'0')}:${String(up%60).padStart(2,'0')}`;
+  sampleCount++;
+  document.getElementById('sample-count').textContent=sampleCount;
+  document.getElementById('last-update').textContent=new Date().toLocaleTimeString();
+}
+
+// ── WebSocket ──────────────────────────────────────────────────────────────
+function setWsState(s,l){
+  document.getElementById('ws-dot').className='ws-dot '+s;
+  document.getElementById('ws-label').textContent=l;
+  const map={connected:'Live',connecting:'Connecting',error:'Error'};
+  const state=s||'idle';
+  const summary=document.getElementById('summary-link-val');
+  summary.textContent=map[state]||'Idle';
+  summary.className=`summary-value ${state==='connected'?'ok':state==='connecting'?'warn':state==='error'?'error':''}`.trim();
+}
+function setButtons(en){
+  ['btn-ups-on','btn-server-on','btn-server-off'].forEach(id=>document.getElementById(id).disabled=!en);
+  document.getElementById('btn-connect').style.display=en?'none':'';
+  document.getElementById('btn-disconnect').style.display=en?'':'none';
+  if(!en){
+    updateControlButtons({upsHeld:false});
+    closeActionPopup();
+  }
+}
+function updateControlButtons(controls={}){
+  controlState.upsHeld=!!controls.upsHeld;
+
+  const upsBtn=document.getElementById('btn-ups-on');
+  upsBtn.textContent=controlState.upsHeld?'⏏ Release Button':'⏻ Hold Button';
+  upsBtn.classList.toggle('on', !controlState.upsHeld);
+  upsBtn.classList.toggle('off', controlState.upsHeld);
+}
+function getActionMeta(device, action){
+  if(device==='ups' && action==='on'){
+    const releasing=controlState.upsHeld;
+    return {
+      kicker:'UPS Control',
+      title:releasing?'Release UPS Power Button':'Hold UPS Power Button',
+      copy:releasing?'Slide to release the UPS button and stop the held contact.':'Slide to hold the UPS power button until you release it later.',
+      sliderLabel:releasing?'Release Confirmation':'Hold Confirmation',
+      sliderNote:releasing?'Slide fully right to release the UPS power button.':'Slide fully right to hold the UPS power button.',
+      tip:releasing?'Release is protected against accidental taps.':'Hold is protected against accidental taps.',
+      swipeVerb:releasing?'Release':'Hold'
+    };
+  }
+  if(device==='server' && action==='on'){
+    return {
+      kicker:'Server Power',
+      title:'Power On Server',
+      copy:'This sends the normal server power pulse. Use the slider to confirm intentionally.',
+      sliderLabel:'Power Confirmation',
+      sliderNote:'Slide fully right to send the server power pulse.',
+      tip:'Short power pulse with slide confirmation.',
+      swipeVerb:'Power'
+    };
+  }
+  return {
+    kicker:'Server Shutdown',
+    title:'Force Off Server',
+    copy:'This sends the long 5 second power-button hold to force the server off.',
+    sliderLabel:'Force-Off Confirmation',
+    sliderNote:'Slide fully right to start the 5 second force-off hold.',
+    tip:'Use only when normal shutdown is not possible.',
+    swipeVerb:'Force Off'
+  };
+}
+function setSwipePosition(left){
+  const track=document.getElementById('popup-swipe');
+  const thumb=document.getElementById('popup-swipe-thumb');
+  const fill=document.getElementById('popup-swipe-fill');
+  const max=Math.max(0, track.clientWidth - thumb.clientWidth - 16);
+  const clamped=Math.max(0, Math.min(left, max));
+  swipeState.left=clamped;
+  swipeState.maxLeft=max;
+  thumb.style.left=`${8 + clamped}px`;
+  fill.style.width=`${56 + clamped}px`;
+  document.getElementById('popup-slider-value').textContent=`${Math.round(max ? (clamped / max) * 100 : 0)}%`;
+}
+function resetSwipeSlider(){
+  document.getElementById('popup-swipe').classList.remove('dragging');
+  setSwipePosition(0);
+}
+function openActionPopup(device, action){
+  if(!isRealtimeConnected()) return;
+  pendingAction={device, action};
+  const meta=getActionMeta(device, action);
+  document.getElementById('popup-kicker').textContent=meta.kicker;
+  document.getElementById('popup-title').textContent=meta.title;
+  document.getElementById('popup-copy').textContent=meta.copy;
+  document.getElementById('popup-slider-label').textContent=meta.sliderLabel;
+  document.getElementById('popup-slider-note').textContent=meta.sliderNote;
+  document.getElementById('popup-tip').textContent=meta.tip;
+  document.getElementById('popup-swipe-verb').textContent=meta.swipeVerb;
+  document.getElementById('action-popup').classList.add('open');
+  requestAnimationFrame(resetSwipeSlider);
+}
+function closeActionPopup(event){
+  if(event && event.target!==event.currentTarget) return;
+  pendingAction=null;
+  document.getElementById('action-popup').classList.remove('open');
+  resetSwipeSlider();
+}
+async function finishSwipeAction(){
+  if(!pendingAction) return;
+  const current=pendingAction;
+  pendingAction=null;
+  await apiCall(current.device, current.action);
+  closeActionPopup();
+}
+function pointerClientX(evt){
+  return evt.touches ? evt.touches[0].clientX : evt.clientX;
+}
+function beginSwipe(evt){
+  const track=document.getElementById('popup-swipe');
+  if(!pendingAction) return;
+  swipeState.active=true;
+  swipeState.startX=pointerClientX(evt);
+  swipeState.startLeft=swipeState.left;
+  swipeState.maxLeft=Math.max(0, track.clientWidth - document.getElementById('popup-swipe-thumb').clientWidth - 16);
+  track.classList.add('dragging');
+  evt.preventDefault();
+}
+function moveSwipe(evt){
+  if(!swipeState.active) return;
+  const delta=pointerClientX(evt) - swipeState.startX;
+  setSwipePosition(swipeState.startLeft + delta);
+  evt.preventDefault();
+}
+function endSwipe(){
+  if(!swipeState.active) return;
+  swipeState.active=false;
+  document.getElementById('popup-swipe').classList.remove('dragging');
+  const progress=swipeState.maxLeft ? swipeState.left / swipeState.maxLeft : 0;
+  if(progress >= 0.92) {
+    setSwipePosition(swipeState.maxLeft);
+    finishSwipeAction();
+  } else {
+    resetSwipeSlider();
+  }
+}
+function connect(){
+  ip=document.getElementById('ip-input').value.trim();
+  deviceId=document.getElementById('device-id-input').value.trim();
+  connectionMode=document.getElementById('mode-input').value;
+  document.getElementById('summary-link-mode').textContent=connectionMode==='cloud'?'Cloud':'LAN';
+  if(!ip){log(connectionMode==='lan'?'Enter an ESP32 IP first':'Enter your backend URL first','err');return;}
+  if(connectionMode==='cloud' && !deviceId){log('Enter a device ID first','err');return;}
+  disconnect(false);
+  resetTelemetry();
+  setWsState('connecting','connecting…');
+
+  if(connectionMode==='cloud'){
+    const base=backendBase();
+    log(`Connecting to cloud backend ${base} for ${deviceId} …`,'info');
+    document.getElementById('endpoint-label').textContent=`${base} · ${deviceId}`;
+    document.getElementById('summary-link-endpoint').textContent=deviceId;
+    startCloudPolling();
+    closeSettings();
+    return;
+  }
+
+  log(`Connecting to ws://${ip}/ws …`,'info');
+  document.getElementById('endpoint-label').textContent=`ws://${ip}/ws`;
+  document.getElementById('summary-link-endpoint').textContent=ip;
+  ws=new WebSocket(`ws://${ip}/ws`);
+  ws.onopen=()=>{setWsState('connected','connected');setButtons(true);log(`Connected to ${ip}`,'info');};
+  ws.onmessage=(e)=>{try{updateCards(JSON.parse(e.data));log(e.data,'recv');}catch{log('Bad JSON: '+e.data,'err');}};
+  ws.onerror=()=>{setWsState('error','error');log(`Error — is ${ip} reachable?`,'err');};
+  ws.onclose=()=>{setWsState('','disconnected');setButtons(false);log('Connection closed','info');};
+  closeSettings();
+}
+function disconnect(updateUi=true){
+  if(ws){ws.close();ws=null;}
+  stopCloudPolling();
+  if(updateUi){
+    setButtons(false);
+    setWsState('','disconnected');
+    document.getElementById('summary-link-endpoint').textContent='not connected';
+  }
+}
+
+function isRealtimeConnected(){
+  if(connectionMode==='cloud') return !!cloudPollTimer;
+  return !!ws && ws.readyState===WebSocket.OPEN;
+}
+
+function stopCloudPolling(){
+  if(cloudPollTimer){
+    clearInterval(cloudPollTimer);
+    cloudPollTimer=null;
+  }
+}
+
+async function fetchCloudStatus(showConnectLog=false){
+  try{
+    const {response, data}=await fetchJson(cloudStatusUrl());
+    if(!response.ok || !data?.ok || !data?.device){
+      throw new Error(data?.error || `HTTP ${response.status}`);
+    }
+    const device=data.device;
+    if(showConnectLog){
+      log(`Cloud connected: ${deviceId}`,'info');
+    }
+    setWsState(device.connected ? 'connected' : 'connecting', device.connected ? 'cloud' : 'waiting');
+    setButtons(device.connected);
+    if(device.status){
+      updateCards(device.status);
+    }
+  } catch (err){
+    setWsState('error','error');
+    setButtons(false);
+    log(`Cloud poll error: ${err.message}`,'err');
+  }
+}
+
+function startCloudPolling(){
+  stopCloudPolling();
+  setWsState('connecting','connecting…');
+  fetchCloudStatus(true);
+  cloudPollTimer=setInterval(()=>{ fetchCloudStatus(false); }, 2000);
+}
+
+// ── REST ───────────────────────────────────────────────────────────────────
+async function apiCall(device,action){
+  if(!ip){log('Not connected','err');return;}
+  const btn=document.getElementById(`btn-${device}-${action}`);
+  btn.classList.add('loading');btn.disabled=true;
+  const url=connectionMode==='cloud'
+    ? `${backendBase()}/api/devices/${encodeURIComponent(deviceId)}/commands/${cloudCommandName(device, action)}`
+    : `http://${ip}/api/${device}/${action}`;
+  log(`POST ${url}`,'send');
+  try{
+    const {response:r, data}=await fetchJson(url,{method:'POST'});
+    if(connectionMode==='lan' && device==='ups'){
+      if(typeof data.held==='boolean'){
+        updateControlButtons({
+          upsHeld: data.held
+        });
+      } else if(action==='off') {
+        updateControlButtons({
+          upsHeld: false
+        });
+      }
+    }
+    if(connectionMode==='cloud' && data?.result){
+      log(`Command result: ${JSON.stringify(data.result)}`, data.result.ok ? 'recv' : 'err');
+      await fetchCloudStatus(false);
+    }
+    log(`Response: ${JSON.stringify(data)}`,r.ok?'recv':'err');
+  }
+  catch(e){log(`Fetch error: ${e.message}`,'err');}
+  finally{
+    setTimeout(()=>{
+      btn.classList.remove('loading');
+      if(isRealtimeConnected()) btn.disabled=false;
+    },action==='off'?5500:700);
+  }
+}
+
+// ── Demo ───────────────────────────────────────────────────────────────────
+let demoTimer=null, demoTick=0;
+function injectDemo(){
+  const demoButton=document.getElementById('btn-demo');
+  if(demoTimer){
+    clearInterval(demoTimer);
+    demoTimer=null;
+    if(demoButton) demoButton.textContent='Demo data';
+    return;
+  }
+  if(demoButton) demoButton.textContent='Stop demo';
+  ip='demo';
+  document.getElementById('endpoint-label').textContent='demo mode';
+  document.getElementById('summary-link-mode').textContent='Demo';
+  document.getElementById('summary-link-endpoint').textContent='simulated';
+  setWsState('connected','demo');
+  closeSettings();
+  log('Demo: simulating voltage sags, dropouts, battery drain','info');
+  const fire=()=>{
+    demoTick++;
+    const sag=Math.sin(demoTick*0.07);
+    const dropout=(demoTick%80>74);
+    const gridV  =230+sag*20+(Math.random()-.5)*2.5;
+    const backupV=dropout?(148+Math.random()*12):(227+sag*15+(Math.random()-.5)*2);
+    const battV  =12.8+Math.sin(demoTick*.035)*.55-demoTick*.0007;
+    const battPct=Math.max(6,Math.min(100,90+Math.sin(demoTick*.035)*12-demoTick*.04));
+    updateCards({
+      grid:   {voltage:+gridV.toFixed(1),   ok:gridV>200},
+      backup: {voltage:+backupV.toFixed(1), ok:backupV>200},
+      battery:{voltage:+battV.toFixed(2),   percent:+battPct.toFixed(1)},
+      uptime: demoTick*2
+    });
+  };
+  fire(); demoTimer=setInterval(fire,1200);
+}
+
+// ── Log ────────────────────────────────────────────────────────────────────
+function log(msg,type='info'){
+  const out=document.getElementById('log');
+  const ts=new Date().toLocaleTimeString('en-GB',{hour12:false});
+  const div=document.createElement('div');
+  div.className='entry '+type;
+  div.innerHTML=`<span class="ts">${ts}</span>${String(msg).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}`;
+  out.appendChild(div);
+  out.scrollTop=out.scrollHeight;
+  while(out.children.length>200)out.removeChild(out.firstChild);
+}
+function clearLog(){document.getElementById('log').innerHTML='';}
+document.getElementById('ip-input').addEventListener('keydown',e=>{if(e.key==='Enter')connect();});
+document.getElementById('device-id-input').addEventListener('keydown',e=>{if(e.key==='Enter')connect();});
+document.getElementById('mode-input').addEventListener('change', e=>{
+  const isCloud=e.target.value==='cloud';
+  document.getElementById('endpoint-input-label').textContent=isCloud?'Backend URL':'ESP32 IP';
+  document.getElementById('ip-input').value=isCloud?'https://monitor.codebaselabs.online':'192.168.1.115';
+  document.getElementById('summary-link-mode').textContent=isCloud?'Cloud':'LAN';
+});
+window.addEventListener('keydown', e=>{ if(e.key==='Escape') closeSettings(); });
+document.getElementById('popup-swipe-thumb').addEventListener('mousedown', beginSwipe);
+document.getElementById('popup-swipe-thumb').addEventListener('touchstart', beginSwipe, {passive:false});
+document.getElementById('popup-swipe').addEventListener('mousedown', beginSwipe);
+document.getElementById('popup-swipe').addEventListener('touchstart', beginSwipe, {passive:false});
+window.addEventListener('mousemove', moveSwipe);
+window.addEventListener('touchmove', moveSwipe, {passive:false});
+window.addEventListener('mouseup', endSwipe);
+window.addEventListener('touchend', endSwipe);
+window.addEventListener('touchcancel', endSwipe);
+log('Choose LAN or Cloud mode, then connect — or press Demo data to preview','info');
+updateControlButtons();
+applyStartupParams();
+syncSettingsSummary();
+if(startupParams.get('autoconnect')==='1'){
+  setTimeout(connect, 50);
+}
+</script>
+</body>
+</html>

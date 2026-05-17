@@ -1,0 +1,61 @@
+{
+  "name": "esp32-power-monitor-desktop",
+  "version": "1.0.0",
+  "description": "Electron desktop app for the ESP32 Power Monitor",
+  "homepage": "https://monitor.codebaselabs.online",
+  "author": {
+    "name": "Codebase Labs",
+    "email": "support@codebaselabs.online"
+  },
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron . --no-sandbox",
+    "build:linux": "electron-builder --linux",
+    "build:deb": "electron-builder --linux deb",
+    "build:appimage": "electron-builder --linux AppImage"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "online.codebaselabs.esp32powermonitor",
+    "productName": "ESP32 Power Monitor",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "extraMetadata": {
+      "type": "module"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "splash.html",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../../backend",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "..",
+        "to": "UI",
+        "filter": [
+          "esp32_test_dashboard.html"
+        ]
+      }
+    ],
+    "linux": {
+      "maintainer": "Codebase Labs <support@codebaselabs.online>",
+      "category": "Utility",
+      "executableArgs": ["--no-sandbox"],
+      "target": [
+        "deb",
+        "AppImage"
+      ]
+    }
+  }
+}

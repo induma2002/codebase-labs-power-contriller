@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Power Monitor Desktop</title>
+  <style>
+    :root {
+      --bg: #0b1016;
+      --panel: #101722;
+      --panel-2: #161f2d;
+      --border: #243047;
+      --text: #dce5f7;
+      --muted: #7d8aa5;
+      --good: #42d392;
+      --bad: #ff647c;
+      --accent: #6ea8fe;
+      --mono: "JetBrains Mono", monospace;
+      --sans: "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at top, rgba(110,168,254,.16), transparent 30%),
+        linear-gradient(180deg, #0a0f15, #0b1016 55%, #080c11);
+      color: var(--text);
+      font-family: var(--sans);
+    }
+    .card {
+      width: min(720px, calc(100vw - 40px));
+      background: rgba(16, 23, 34, .92);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 24px;
+      box-shadow: 0 30px 80px rgba(0,0,0,.35);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.35rem;
+      font-weight: 600;
+      letter-spacing: -.02em;
+    }
+    p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: .95rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .status {
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+    }
+    .label {
+      font-size: .72rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .value {
+      font-family: var(--mono);
+      font-size: .9rem;
+    }
+    .value.ok { color: var(--good); }
+    .value.err { color: var(--bad); }
+    .value.info { color: var(--accent); }
+    .log {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: #0a0f16;
+      padding: 14px;
+      min-height: 180px;
+      max-height: 260px;
+      overflow: auto;
+      font-family: var(--mono);
+      font-size: .8rem;
+      color: #b8c3da;
+      white-space: pre-wrap;
+    }
+    @media (max-width: 640px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Power Monitor Desktop</h1>
+    <p>Starting embedded backend and Cloudflare tunnel.</p>
+
+    <div class="grid">
+      <div class="status">
+        <div class="label">Backend</div>
+        <div class="value info" id="backend-status">starting</div>
+      </div>
+      <div class="status">
+        <div class="label">Tunnel</div>
+        <div class="value info" id="tunnel-status">starting</div>
+      </div>
+    </div>
+
+    <div class="log" id="log"></div>
+  </div>
+
+  <script>
+    const logEl = document.getElementById('log');
+    const backendEl = document.getElementById('backend-status');
+    const tunnelEl = document.getElementById('tunnel-status');
+
+    function render(payload) {
+      if (payload.backend?.running) {
+        backendEl.textContent = `running on ${payload.backend.url}`;
+        backendEl.className = 'value ok';
+      } else if (payload.backend?.error) {
+        backendEl.textContent = payload.backend.error;
+        backendEl.className = 'value err';
+      }
+
+      if (payload.tunnel?.running) {
+        tunnelEl.textContent = payload.tunnel.command;
+        tunnelEl.className = 'value ok';
+      } else if (payload.tunnel?.error) {
+        tunnelEl.textContent = payload.tunnel.error;
+        tunnelEl.className = 'value err';
+      }
+
+      if (payload.logs?.length) {
+        logEl.textContent = payload.logs.join('\n');
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+    }
+
+    window.desktopApp.getStatus().then(render);
+    window.desktopApp.onStatus(render);
+  </script>
+</body>
+</html>
